@@ -1,79 +1,66 @@
 import streamlit as st
 import requests
 from datetime import datetime, timedelta
+import isodate  # 👈 duration parse karne ke liye zaroori hai
 
-# YouTube API Key
+# -------------------------
+# YouTube API Settings
+# -------------------------
 API_KEY = "AIzaSyAvFafNFyNd9qIJLkuhnykHU_TbK0Tm-mk"
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YOUTUBE_VIDEO_URL = "https://www.googleapis.com/youtube/v3/videos"
 YOUTUBE_CHANNEL_URL = "https://www.googleapis.com/youtube/v3/channels"
 
-# Streamlit App Title
-st.title("YouTube Viral Topics Tool")
+# -------------------------
+# Streamlit UI
+# -------------------------
+st.title("YouTube Viral Topics Tool (5+ min Videos Only)")
 
-# Input Fields
 days = st.number_input("Enter Days to Search (1-30):", min_value=1, max_value=30, value=5)
 
-# ✅ List of broader keywords (fixed JSON block)
-keywords = {
-  "topic": "The Lost Treasure of the Knights Templar",
-  "primary_keywords": [
-    "Knights Templar",
-    "Templar treasure",
-    "lost treasure",
-    "holy grail",
-    "Templar secrets",
-    "Templar history",
-    "medieval mysteries",
-    "crusades"
-  ],
-  "long_tail_keywords": [
-    "where is the Knights Templar treasure",
-    "evidence of Templar treasure locations",
-    "Knights Templar and the Holy Grail myth",
-    "Templar treasure in Scotland theories",
-    "Oak Island Templar connections explained",
-    "what happened to the Templars treasure 1307",
-    "hidden symbols linked to Templar hoard",
-    "Templar banking wealth and disappearance",
-    "maps and clues to Templar treasure",
-    "fact vs fiction Knights Templar gold"
-  ],
-  "search_intent_mix": {
-    "informational": [
-      "who were the Knights Templar",
-      "what is the lost Templar treasure",
-      "did the Templars protect the Holy Grail"
-    ],
-    "investigational": [
-      "best documentaries on Knights Templar treasure",
-      "archaeological finds linked to Templars",
-      "historical sources for Templar wealth"
-    ],
-    "transactional": [
-      "Knights Templar books for beginners",
-      "Templar history documentaries to watch"
-    ]
-  }
-}
+keywords = [
+     "Knights Templar",
+        "Templar treasure",
+        "lost treasure",
+        "holy grail",
+        "Templar secrets",
+        "crusades history",
+        "medieval mysteries",
+        "hidden gold",
+        "Oak Island treasure",
+        "Templar artifacts",
+        "ancient relics",
+        "mystery of 1307",
+        "Templar banking wealth",
+        "lost relics of Jerusalem",
+        "buried Templar treasure",
+        "forbidden Templar knowledge",
+        "maps to treasure",
+        "Templar conspiracy theories",
+        "secret societies Templar",
+        "Templar treasure legends"
+]
 
-# ✅ Merge all keywords into one flat list
-all_keywords = (
-    keywords["primary_keywords"]
-    + keywords["long_tail_keywords"]
-    + keywords["search_intent_mix"]["informational"]
-    + keywords["search_intent_mix"]["investigational"]
-    + keywords["search_intent_mix"]["transactional"]
-)
+# -------------------------
+# Helper Function
+# -------------------------
+def parse_duration(duration_str):
+    """Convert ISO8601 duration string to seconds"""
+    try:
+        return int(isodate.parse_duration(duration_str).total_seconds())
+    except:
+        return 0
 
-# Fetch Data Button
+# -------------------------
+# Fetch Data
+# -------------------------
 if st.button("Fetch Data"):
     try:
         start_date = (datetime.utcnow() - timedelta(days=int(days))).isoformat("T") + "Z"
         all_results = []
 
-        for keyword in all_keywords:
-            st.write(f"Searching for keyword: {keyword}")
+        for keyword in keywords:
+            st.write(f"🔎 Searching for keyword: **{keyword}**")
 
             search_params = {
                 "part": "snippet",
@@ -93,38 +80,67 @@ if st.button("Fetch Data"):
                 continue
 
             videos = data["items"]
-            video_ids = [video["id"]["videoId"] for video in videos if "id" in video and "videoId" in video["id"]]
-            channel_ids = [video["snippet"]["channelId"] for video in videos if "snippet" in video and "channelId" in video["snippet"]]
+            video_ids = [v["id"]["videoId"] for v in videos if "id" in v and "videoId" in v["id"]]
+            channel_ids = [v["snippet"]["channelId"] for v in videos if "snippet" in v and "channelId" in v["snippet"]]
 
             if not video_ids or not channel_ids:
-                st.warning(f"Skipping keyword: {keyword} due to missing video/channel data.")
                 continue
 
-            # Fetch video statistics
-            stats_params = {"part": "statistics", "id": ",".join(video_ids), "key": API_KEY}
+            # Video Stats + Duration
+            stats_params = {"part": "statistics,contentDetails", "id": ",".join(video_ids), "key": API_KEY}
             stats_response = requests.get(YOUTUBE_VIDEO_URL, params=stats_params)
             stats_data = stats_response.json()
 
             if "items" not in stats_data or not stats_data["items"]:
-                st.warning(f"Failed to fetch video statistics for keyword: {keyword}")
                 continue
 
-            # Fetch channel statistics
+            # Channel Stats
             channel_params = {"part": "statistics", "id": ",".join(channel_ids), "key": API_KEY}
             channel_response = requests.get(YOUTUBE_CHANNEL_URL, params=channel_params)
             channel_data = channel_response.json()
 
             if "items" not in channel_data or not channel_data["items"]:
-                st.warning(f"Failed to fetch channel statistics for keyword: {keyword}")
                 continue
 
-            stats = stats_data["items"]
-            channels = channel_data["items"]
-
-            for video, stat, channel in zip(videos, stats, channels):
+            # Collect Results
+            for video, stat, channel in zip(videos, stats_data["items"], channel_data["items"]):
                 title = video["snippet"].get("title", "N/A")
                 description = video["snippet"].get("description", "")[:200]
                 video_url = f"https://www.youtube.com/watch?v={video['id']['videoId']}"
                 views = int(stat["statistics"].get("viewCount", 0))
                 subs = int(channel["statistics"].get("subscriberCount", 0))
+
+                duration_seconds = parse_duration(stat["contentDetails"]["duration"])
+
+                # ✅ Only 5+ minutes videos + small channels
+                if subs < 3000 and duration_seconds >= 300:
+                    all_results.append({
+                        "Title": title,
+                        "Description": description,
+                        "URL": video_url,
+                        "Views": views,
+                        "Subscribers": subs,
+                        "Duration (min)": round(duration_seconds / 60, 2)
+                    })
+
+        # -------------------------
+        # Show Results
+        # -------------------------
+        if all_results:
+            st.success(f"✅ Found {len(all_results)} results across all keywords!")
+            for result in all_results:
+                st.markdown(
+                    f"**🎬 Title:** {result['Title']}  \n"
+                    f"**📝 Description:** {result['Description']}  \n"
+                    f"**🔗 URL:** [Watch Video]({result['URL']})  \n"
+                    f"**👀 Views:** {result['Views']}  \n"
+                    f"**📊 Subscribers:** {result['Subscribers']}  \n"
+                    f"**⏱ Duration:** {result['Duration (min)']} minutes"
+                )
+                st.write("---")
+        else:
+            st.warning("No 5+ minute videos found with <3000 subs in this range.")
+
+    except Exception as e:
+        st.error(f"⚠️ Error: {str(e)}")
 
