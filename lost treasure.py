@@ -126,4 +126,5 @@ if st.button("Fetch Data"):
                 description = video["snippet"].get("description", "")[:200]
                 video_url = f"https://www.youtube.com/watch?v={video['id']['videoId']}"
                 views = int(stat["statistics"].get("viewCount", 0))
-                subs = int(channel["stat]()
+                subs = int(channel["statistics"].get("subscriberCount", 0))
+
